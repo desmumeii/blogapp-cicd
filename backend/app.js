@@ -1,5 +1,5 @@
 const express = require('express')
-import cors from 'cors'
+const cors =require('cors')
 const mongoose = require('mongoose')
 const blogRouter = require('./controllers/blogs')
 const middleware = require('./utils/middleware')
