@@ -1,4 +1,5 @@
 const express = require('express')
+import cors from 'cors'
 const mongoose = require('mongoose')
 const blogRouter = require('./controllers/blogs')
 const middleware = require('./utils/middleware')
@@ -9,6 +10,11 @@ const loginRouter = require('./controllers/login')
 const app = express()
 
 logger.info('connecting to', config.MONGODB_URI)
+
+app.use(cors({
+  origin: 'https://blogapp-cicd-frontend.onrender.com',
+  credentials: true
+}))
 
 mongoose
   .connect(config.MONGODB_URI)
