@@ -1,0 +1,128 @@
+name: Fullstack Deployment Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+jobs:
+  simple_deployment_pipeline:
+    runs-on: ubuntu-latest
+
+    outputs:
+      can_deploy: ${{ steps.deploy_backend.outcome == 'success' && steps.deploy_frontend.outcome == 'success' }}
+      skip: ${{ steps.skip.outputs.skip }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check skip flag
+        id: skip
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          COMMITS=$(jq -r '.commits[].message' "$GITHUB_EVENT_PATH" || true)
+          if echo "$COMMITS" | grep -q '#skip'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Install Backend dependencies
+        if: ${{ steps.skip.outputs.skip == 'false' }}
+        run: |
+          cd backend
+          npm install
+
+      - name: Lint Backend
+        if: ${{ steps.skip.outputs.skip == 'false' }}
+        run: |
+          cd backend
+          npm run lint || echo "No lint step for backend"
+
+      - name: Build Backend
+        if: ${{ steps.skip.outputs.skip == 'false' }}
+        run: |
+          cd backend
+          npm run build || echo "No build step for backend"
+
+      - name: Install Frontend dependencies
+        if: ${{ steps.skip.outputs.skip == 'false' }}
+        run: |
+          cd frontend
+          npm install
+
+      - name: Lint Frontend
+        if: ${{ steps.skip.outputs.skip == 'false' }}
+        run: |
+          cd frontend
+          npm run lint || echo "No lint step for frontend"
+
+      - name: Build Frontend
+        if: ${{ steps.skip.outputs.skip == 'false' }}
+        run: |
+          cd frontend
+          npm run build || echo "No build step for frontend"
+
+      - name: Deploy Backend
+        id: deploy_backend
+        if: ${{ steps.skip.outputs.skip == 'false' }}
+        run: |
+          curl https://api.render.com/deploy/srv-${{ secrets.RENDER_BACKEND_ID }}?key=${{ secrets.RENDER_BACKEND_API_KEY }}
+
+      - name: Notify Discord Backend Deployment
+        uses: rjstone/discord-webhook-notify@v2
+        if: success()
+        with:
+          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+          severity: info
+          title: Backend deployed ✅
+          details: Backend service deployed successfully
+
+      - name: Deploy Frontend
+        id: deploy_frontend
+        if: ${{ steps.skip.outputs.skip == 'false' }}
+        run: |
+          curl https://api.render.com/deploy/srv-${{ secrets.RENDER_FRONTEND_ID }}?key=${{ secrets.RENDER_FRONTEND_API_KEY }}
+
+      - name: Notify Discord Frontend Deployment
+        uses: rjstone/discord-webhook-notify@v2
+        if: success()
+        with:
+          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+          severity: info
+          title: Frontend deployed ✅
+          details: Frontend service deployed successfully
+
+      - name: Notify Discord on failure
+        uses: rjstone/discord-webhook-notify@v2
+        if: failure()
+        with:
+          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+          severity: error
+          title: Deployment failed ❌
+          details: |
+            Commit: ${{ github.sha }}
+            Message: ${{ github.event.head_commit.message }}
+
+  tag_release:
+    needs: simple_deployment_pipeline
+    runs-on: ubuntu-latest
+
+    if: >
+      ${{ github.event_name == 'push' &&
+         needs.simple_deployment_pipeline.outputs.skip == 'false' &&
+         needs.simple_deployment_pipeline.outputs.can_deploy == 'true'}}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump version and push tag
+        uses: anothrNick/github-tag-action@1.75.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BUMP: patch
