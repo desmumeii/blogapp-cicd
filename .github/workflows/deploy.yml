@@ -8,10 +8,11 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  build:
-    name: Build Frontend and Backend
+  simple_deployment_pipeline:
     runs-on: ubuntu-latest
+
     outputs:
+      can_deploy: ${{ steps.deploy_backend.outcome == 'success' && steps.deploy_frontend.outcome == 'success' }}
       skip: ${{ steps.skip.outputs.skip }}
 
     steps:
@@ -23,16 +24,15 @@ jobs:
 
       - name: Check skip flag
         id: skip
+        if: ${{ github.event_name == 'push' }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            COMMITS=$(jq -r '.commits[].message' "$GITHUB_EVENT_PATH" || true)
-            if echo "$COMMITS" | grep -q '#skip'; then
-              echo "skip=true" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-          fi
-          echo "skip=false" >> $GITHUB_OUTPUT
+          COMMITS=$(jq -r '.commits[].message' "$GITHUB_EVENT_PATH" || true)
 
+          if echo "$COMMITS" | grep -q '#skip'; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Install Backend dependencies
         if: ${{ steps.skip.outputs.skip == 'false' }}
@@ -70,17 +70,9 @@ jobs:
           cd frontend
           npm run build || echo "No build step for frontend"
 
-  deploy:
-    name: Deploy Frontend and Backend
-    runs-on: ubuntu-latest
-    needs: build
-    if: needs.build.outputs.skip == 'false'
-
-    steps:
-      - uses: actions/checkout@v4
-
       - name: Deploy Backend
         id: deploy_backend
+        if: ${{ steps.skip.outputs.skip == 'false' }}
         run: |
           curl https://api.render.com/deploy/srv-${{ secrets.RENDER_BACKEND_ID }}?key=${{ secrets.RENDER_BACKEND_API_KEY }}
 
@@ -95,6 +87,7 @@ jobs:
 
       - name: Deploy Frontend
         id: deploy_frontend
+        if: ${{ steps.skip.outputs.skip == 'false' }}
         run: |
           curl https://api.render.com/deploy/srv-${{ secrets.RENDER_FRONTEND_ID }}?key=${{ secrets.RENDER_FRONTEND_API_KEY }}
 
@@ -119,11 +112,13 @@ jobs:
             Message: ${{ github.event.head_commit.message }}
 
   tag_release:
-    needs: deploy
+    needs: simple_deployment_pipeline
     runs-on: ubuntu-latest
+
     if: >
       ${{ github.event_name == 'push' &&
-         needs.deploy.result == 'success' }}
+         needs.simple_deployment_pipeline.outputs.skip == 'false' &&
+         needs.simple_deployment_pipeline.outputs.can_deploy == 'true'}}
 
     steps:
       - uses: actions/checkout@v4
