@@ -82,7 +82,7 @@ jobs:
         with:
           webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
           severity: info
-          title: Backend deployed ✅
+          title: Backend deployed
           details: Backend service deployed successfully
 
       - name: Deploy Frontend
@@ -97,7 +97,7 @@ jobs:
         with:
           webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
           severity: info
-          title: Frontend deployed ✅
+          title: Frontend deployed
           details: Frontend service deployed successfully
 
       - name: Notify Discord on failure
@@ -106,7 +106,7 @@ jobs:
         with:
           webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
           severity: error
-          title: Deployment failed ❌
+          title: Deployment failed
           details: |
             Commit: ${{ github.sha }}
             Message: ${{ github.event.head_commit.message }}
@@ -122,7 +122,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - name: Bump version and push tag
         uses: anothrNick/github-tag-action@1.75.0
         env:
